@@ -48,6 +48,14 @@
 
     /* MOBILE: inputs mindestens 16px damit iOS nicht reinzoomt */
     input, select, textarea { font-size: 16px !important; }
+    /* Datum-Felder exakt gleich groß wie andere Inputs */
+    input[type="date"] {
+      -webkit-appearance: none;
+      appearance: none;
+      min-height: unset;
+      height: auto;
+      line-height: normal;
+    }
 
     /* Touch-Targets: alle Buttons min 44px hoch */
     .btn { min-height: 44px; }

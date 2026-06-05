@@ -275,7 +275,7 @@
       <div>
         <div style="font-weight:600;margin-bottom:4px;">Noch keine Einträge vorhanden</div>
         <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Hast du alte Stundenzetteldaten? Lade dein Backup hoch um Statistiken und die Karte zu befüllen.</div>
-        <button class="btn btn-outline" onclick="document.getElementById('import-file').click()" style="font-size:13px;padding:7px 14px;">Backup laden</button>
+        <button class="btn btn-outline" onclick="document.getElementById('import-file-dash').click()" style="font-size:13px;padding:7px 14px;">Backup laden</button>
         <input type="file" id="import-file-dash" accept=".json" style="display:none" onchange="doImport(this)">
       </div>
     </div>
@@ -448,18 +448,19 @@ function initDashboard() {
 initDashboard();
 setTimeout(geocodeAll, 2000); // Nach 2s starten damit die Seite erst fertig lädt
 
+function setVal(id, val) { const el=document.getElementById(id); if(el) el.value=val; }
 function applySettings() {
   const s = state.settings;
-  document.getElementById('s-name').value = s.name||'';
-  document.getElementById('s-firma').value = s.firma||'';
-  document.getElementById('s-lohn-arbeit').value = s.lohnArbeit;
-  document.getElementById('s-lohn-fahrt').value = s.lohnFahrt;
-  document.getElementById('s-lohn-nacht').value = s.lohnNacht;
-  document.getElementById('s-lohn-km').value = s.lohnKm;
-  document.getElementById('s-minijob').value = s.minijob||603;
-  document.getElementById('s-api-key').value = s.apiKey||'';
-  document.getElementById('s-ausstehend-start').value = s.ausstehendStart||0;
-  document.getElementById('s-ausstehend-datum').value = s.ausstehendDatum||localDate(new Date());
+  setVal('s-name', s.name||'');
+  setVal('s-firma', s.firma||'');
+  setVal('s-lohn-arbeit', s.lohnArbeit||12.5);
+  setVal('s-lohn-fahrt', s.lohnFahrt||10);
+  setVal('s-lohn-nacht', s.lohnNacht||17.5);
+  setVal('s-lohn-km', s.lohnKm||0.3);
+  setVal('s-minijob', s.minijob||603);
+  setVal('s-api-key', s.apiKey||'');
+  setVal('s-ausstehend-start', s.ausstehendStart||0);
+  setVal('s-ausstehend-datum', s.ausstehendDatum||localDate(new Date()));
 }
 
 // ── NAV ────────────────────────────────────────────────────────────────────────
@@ -1180,7 +1181,34 @@ function renderAusstehend() {
 
 // ── BACKUP ────────────────────────────────────────────────────────────────────
 function exportData(){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`stundenzettel-${new Date().toISOString().slice(0,10)}.json`;a.click();}
-function doImport(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{state=JSON.parse(e.target.result);save();location.reload();}catch{toast('Ungültige Datei',true);}};r.readAsText(f);}
+function doImport(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const stored = JSON.parse(e.target.result);
+      state = Object.assign({}, DEFAULTS, stored);
+      state.settings = Object.assign({}, DEFAULTS.settings, stored.settings||{});
+      if (!Array.isArray(state.zahlungen)) state.zahlungen = [];
+      if (!Array.isArray(state.entries)) state.entries = [];
+      state.currentMonth = localYM(new Date());
+      save();
+      applySettings();
+      updateAutocomplete();
+      if (state.signature) {
+        document.getElementById('sig-saved-row').style.display = 'block';
+        document.getElementById('sig-saved-img').src = state.signature;
+      }
+      showPage('dashboard', document.getElementById('bt-dashboard'));
+      toast(`✓ ${state.entries.length} Einträge geladen`);
+      setTimeout(geocodeAll, 1000);
+    } catch(err) {
+      toast('Ungültige Backup-Datei', true);
+    }
+  };
+  r.readAsText(f);
+}
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 function fmt(n){return n.toFixed(2).replace('.',',')+' €';}

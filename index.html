@@ -204,6 +204,17 @@
     <div id="ausstehend-sub" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></div>
     <div id="zahlungen-list"></div>
   </div>
+  <div id="backup-hint" style="display:none;" class="card" style="border-color:var(--accent)">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="font-size:28px">📂</div>
+      <div>
+        <div style="font-weight:600;margin-bottom:4px;">Noch keine Einträge vorhanden</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Hast du alte Stundenzetteldaten? Lade dein Backup hoch um Statistiken und die Karte zu befüllen.</div>
+        <button class="btn btn-outline" onclick="document.getElementById('import-file').click()" style="font-size:13px;padding:7px 14px;">Backup laden</button>
+        <input type="file" id="import-file-dash" accept=".json" style="display:none" onchange="doImport(this)">
+      </div>
+    </div>
+  </div>
   <div class="section-label" style="margin-top:4px">Gesamtübersicht</div>
   <div class="dash-grid" id="dash-totals"></div>
 
@@ -595,6 +606,7 @@ ${extras.length>0?`<div class="footer-info">${extras.join('&nbsp;&nbsp;|&nbsp;&n
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard() {
   renderAusstehend();
+  document.getElementById('backup-hint').style.display = state.entries.length === 0 ? 'block' : 'none';
   const s = state.settings;
   const allBrutto = state.entries.reduce((t,e)=>t+e.arbeit*s.lohnArbeit+e.fahrt*s.lohnFahrt+e.nacht*s.lohnNacht+e.km*s.lohnKm,0);
   const allArbeit = state.entries.reduce((t,e)=>t+e.arbeit,0);

@@ -362,6 +362,7 @@ let sigDrawing = false, sigCtx, sigInited = false;
 
 // ── INIT ───────────────────────────────────────────────────────────────────────
 load();
+state.currentMonth = localYM(new Date()); // immer aktuellen Monat beim Start
 applySettings();
 initSigPad();
 updateAutocomplete();
@@ -901,27 +902,91 @@ function initMap() {
 
 // ── SIGNATURE PAD ─────────────────────────────────────────────────────────────
 function initSigPad() {
-  const canvas=document.getElementById('sig-canvas');
-  // Größe anhand des sichtbaren Elternelements bestimmen
-  const w = canvas.parentElement.offsetWidth - 28 || 300;
-  const dpr=window.devicePixelRatio||1;
-  canvas.width=w*dpr; canvas.height=140*dpr;
-  canvas.style.width=w+'px'; canvas.style.height='140px';
-  sigCtx=canvas.getContext('2d'); sigCtx.scale(dpr,dpr);
-  sigCtx.strokeStyle='#f59e0b'; sigCtx.lineWidth=2.5; sigCtx.lineCap='round';
-  if(sigInited) return; // Event Listener nur einmal anhängen
-  sigInited=true;
-  const pos=e=>{const r=canvas.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return[t.clientX-r.left,t.clientY-r.top];};
-  canvas.addEventListener('mousedown',e=>{sigDrawing=true;sigCtx.beginPath();const[x,y]=pos(e);sigCtx.moveTo(x,y);});
-  canvas.addEventListener('mousemove',e=>{if(!sigDrawing)return;const[x,y]=pos(e);sigCtx.lineTo(x,y);sigCtx.stroke();});
-  canvas.addEventListener('mouseup',()=>sigDrawing=false);
-  canvas.addEventListener('mouseleave',()=>sigDrawing=false);
-  canvas.addEventListener('touchstart',e=>{e.preventDefault();sigDrawing=true;sigCtx.beginPath();const[x,y]=pos(e);sigCtx.moveTo(x,y);},{passive:false});
-  canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!sigDrawing)return;const[x,y]=pos(e);sigCtx.lineTo(x,y);sigCtx.stroke();},{passive:false});
-  canvas.addEventListener('touchend',()=>sigDrawing=false);
+  const canvas = document.getElementById('sig-canvas');
+  const parent = canvas.parentElement;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(parent.offsetWidth - 32, 200);
+  const h = 150;
+
+  // Canvas in logischen Pixeln setzen, physische Pixel für Schärfe
+  canvas.style.width  = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.width  = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+
+  sigCtx = canvas.getContext('2d');
+  sigCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sigCtx.strokeStyle = '#f59e0b';
+  sigCtx.lineWidth   = 2.5;
+  sigCtx.lineCap     = 'round';
+  sigCtx.lineJoin    = 'round';
+
+  if (sigInited) return;
+  sigInited = true;
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return [src.clientX - r.left, src.clientY - r.top];
+  }
+
+  // Maus
+  canvas.addEventListener('mousedown', e => {
+    sigDrawing = true;
+    sigCtx.beginPath();
+    const [x, y] = getPos(e);
+    sigCtx.moveTo(x, y);
+    e.preventDefault();
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (!sigDrawing) return;
+    const [x, y] = getPos(e);
+    sigCtx.lineTo(x, y);
+    sigCtx.stroke();
+    sigCtx.beginPath();
+    sigCtx.moveTo(x, y);
+  });
+  canvas.addEventListener('mouseup',    () => { sigDrawing = false; });
+  canvas.addEventListener('mouseleave', () => { sigDrawing = false; });
+  // Touch (Handy/Tablet)
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    sigDrawing = true;
+    sigCtx.beginPath();
+    const [x, y] = getPos(e);
+    sigCtx.moveTo(x, y);
+  }, { passive: false });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (!sigDrawing) return;
+    const [x, y] = getPos(e);
+    sigCtx.lineTo(x, y);
+    sigCtx.stroke();
+    sigCtx.beginPath();
+    sigCtx.moveTo(x, y);
+  }, { passive: false });
+  canvas.addEventListener('touchend',   () => { sigDrawing = false; });
+  canvas.addEventListener('touchcancel',() => { sigDrawing = false; });
 }
-function saveSig(){state.signature=document.getElementById('sig-canvas').toDataURL();save();document.getElementById('sig-saved-row').style.display='block';document.getElementById('sig-saved-img').src=state.signature;toast('Unterschrift gespeichert ✓');}
-function clearSig(){sigCtx.clearRect(0,0,9999,9999);state.signature=null;save();document.getElementById('sig-saved-row').style.display='none';toast('Unterschrift gelöscht');}
+
+function saveSig() {
+  const canvas = document.getElementById('sig-canvas');
+  state.signature = canvas.toDataURL();
+  save();
+  document.getElementById('sig-saved-row').style.display = 'block';
+  document.getElementById('sig-saved-img').src = state.signature;
+  toast('Unterschrift gespeichert ✓');
+}
+
+function clearSig() {
+  const canvas = document.getElementById('sig-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  sigCtx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+  state.signature = null;
+  save();
+  document.getElementById('sig-saved-row').style.display = 'none';
+  toast('Unterschrift gelöscht');
+}
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 function saveSettings(){

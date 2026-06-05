@@ -109,15 +109,15 @@
 <nav>
   <h1>⚒ Stundenzettel</h1>
   <div class="nav-tabs">
-    <button class="nav-tab active" onclick="showPage('eintrag',this)">Eintrag</button>
+    <button class="nav-tab" onclick="showPage('eintrag',this)">Eintrag</button>
     <button class="nav-tab" onclick="showPage('monat',this)">Monat</button>
-    <button class="nav-tab" onclick="showPage('dashboard',this)">Dashboard</button>
+    <button class="nav-tab active" onclick="showPage('dashboard',this)">Dashboard</button>
     <button class="nav-tab" onclick="showPage('einstellungen',this)">⚙</button>
   </div>
 </nav>
 
 <!-- EINTRAG -->
-<div class="page active" id="page-eintrag">
+<div class="page" id="page-eintrag">
   <div class="card">
     <div class="card-title">Plancraft Import</div>
     <div class="upload-zone" onclick="document.getElementById('plancraft-file').click()">
@@ -197,14 +197,14 @@
 </div>
 
 <!-- DASHBOARD -->
-<div class="page" id="page-dashboard">
+<div class="page active" id="page-dashboard">
   <div class="card" id="ausstehend-card" style="border-color:#f59e0b;">
     <div class="card-title">Ausstehend vom Chef</div>
     <div id="ausstehend-betrag" style="font-size:32px;font-weight:700;color:var(--accent);margin-bottom:4px;"></div>
     <div id="ausstehend-sub" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></div>
     <div id="zahlungen-list"></div>
   </div>
-  <div id="backup-hint" style="display:none;" class="card" style="border-color:var(--accent)">
+  <div id="backup-hint" style="display:none;border-color:var(--accent)" class="card">
     <div style="display:flex;align-items:center;gap:12px;">
       <div style="font-size:28px">📂</div>
       <div>
@@ -322,8 +322,26 @@ let state = {
   geocache: {}
 };
 
+const DEFAULTS = {
+  entries: [], zahlungen: [], signature: null, geocache: {},
+  currentMonth: localYM(new Date()),
+  settings: { name:'', firma:'', lohnArbeit:12.5, lohnFahrt:10, lohnNacht:17.5, lohnKm:0.3, minijob:603, apiKey:'', ausstehendStart:0, ausstehendDatum:'' }
+};
+
 function save() { try { localStorage.setItem('sz2', JSON.stringify(state)); } catch(e){} }
-function load() { try { const d=localStorage.getItem('sz2'); if(d) state=JSON.parse(d); } catch(e){} }
+function load() {
+  try {
+    const d=localStorage.getItem('sz2');
+    if(d) {
+      const stored=JSON.parse(d);
+      // Merge: neue Felder aus DEFAULTS übernehmen falls nicht vorhanden
+      state = Object.assign({}, DEFAULTS, stored);
+      state.settings = Object.assign({}, DEFAULTS.settings, stored.settings||{});
+      if(!Array.isArray(state.zahlungen)) state.zahlungen=[];
+      if(!Array.isArray(state.entries)) state.entries=[];
+    }
+  } catch(e){}
+}
 
 const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
@@ -334,6 +352,8 @@ initSigPad();
 updateAutocomplete();
 document.getElementById('f-datum').value = localDate(new Date());
 document.getElementById('z-datum').value = localDate(new Date());
+renderDashboard();
+window.addEventListener('load', renderDashboard);
 document.getElementById('f-km').closest('.form-row').style.opacity = '.4';
 if (state.signature) { document.getElementById('sig-saved-row').style.display='block'; document.getElementById('sig-saved-img').src=state.signature; }
 ['f-arbeit','f-fahrt','f-nacht','f-km'].forEach(id => document.getElementById(id).addEventListener('input', updateSummary));
@@ -717,12 +737,14 @@ function drawMonatRing(earned, limit) {
     : `<span style="color:var(--text-muted)">Noch <strong style="color:var(--accent)">${fmt(remaining)}</strong><br>bis zur Minijob-Grenze (${Math.round(pct*100)}%)</span>`;
 }
 
-let barMonths=[];
+var barMonths=[];
 
 function drawBar() {
   const canvas=document.getElementById('bar-canvas');
+  const W=canvas.parentElement.offsetWidth;
+  if(!W){ setTimeout(drawBar, 80); return; }
   const ctx=canvas.getContext('2d');
-  const W=canvas.offsetWidth||640; canvas.width=W;
+  canvas.width=W;
   const H=180; canvas.height=H;
   ctx.clearRect(0,0,W,H);
 
@@ -790,6 +812,8 @@ function drawBar() {
 }
 
 function initMap() {
+  try {
+  if(typeof L === 'undefined') { document.getElementById('map').innerHTML='<p style="padding:20px;color:var(--text-muted);font-size:13px;">Karte benötigt Internet-Verbindung.</p>'; return; }
   if(!mapInstance) {
     mapInstance=L.map('map').setView([51.2,10.4],6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(mapInstance);
@@ -806,6 +830,7 @@ function initMap() {
         .bindPopup(`<strong>${e.ort}</strong><br>${count} Einsatz${count!==1?'ätze':''}`);
     }
   });
+  } catch(e){ console.warn('Karte:', e); }
 }
 
 // ── SIGNATURE PAD ─────────────────────────────────────────────────────────────

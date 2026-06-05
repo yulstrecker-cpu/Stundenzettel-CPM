@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stundenzettel</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f0f; --surface: #1a1a1a; --surface2: #242424;
+      --border: #2e2e2e; --accent: #f59e0b; --text: #f5f5f5;
+      --text-muted: #888; --danger: #ef4444; --success: #22c55e; --radius: 12px;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; min-height: 100vh; }
+
+    nav { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 12px; height: 56px; position: sticky; top: 0; z-index: 200; }
+    nav h1 { font-size: 17px; font-weight: 700; color: var(--accent); white-space: nowrap; }
+    .nav-tabs { display: flex; gap: 2px; }
+    .nav-tab { padding: 6px 11px; border-radius: 8px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; white-space: nowrap; }
+    .nav-tab.active { background: var(--accent); color: #000; }
+
+    .page { display: none; padding: 14px; max-width: 720px; margin: 0 auto; padding-bottom: 80px; }
+    .page.active { display: block; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+    .card-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: 12px; }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .form-row.full { grid-template-columns: 1fr; }
+    .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+    label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+    input, select, textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: 15px; outline: none; transition: border-color .15s; }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    textarea { resize: vertical; min-height: 60px; }
+
+    .toggle { position: relative; width: 44px; height: 24px; flex-shrink: 0; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--border); border-radius: 24px; transition: .2s; cursor: pointer; }
+    .toggle-slider:before { content: ''; position: absolute; width: 18px; height: 18px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: .2s; }
+    .toggle input:checked + .toggle-slider { background: var(--accent); }
+    .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; }
+
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s, transform .1s; }
+    .btn:active { transform: scale(.97); }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-success { background: var(--success); color: #000; }
+    .btn-full { width: 100%; justify-content: center; }
+
+    .entry-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
+    .entry-date { font-size: 12px; color: var(--text-muted); }
+    .entry-main { font-size: 15px; font-weight: 600; }
+    .entry-sub { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+    .entry-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .chip { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+    .chip-work { background: #1d4ed8; color: #bfdbfe; }
+    .chip-travel { background: #065f46; color: #a7f3d0; }
+    .chip-night { background: #4c1d95; color: #ddd6fe; }
+    .chip-km { background: #7c2d12; color: #fed7aa; }
+    .icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+    .stat-value { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .month-nav span { font-size: 17px; font-weight: 700; }
+
+    #sig-canvas { width: 100%; height: 140px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; touch-action: none; cursor: crosshair; display: block; }
+    .sig-preview { width: 100%; height: 70px; object-fit: contain; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; }
+
+    .upload-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; transition: border-color .15s; }
+    .upload-zone:hover { border-color: var(--accent); }
+    .upload-zone .icon { font-size: 28px; margin-bottom: 6px; }
+    .upload-zone p { color: var(--text-muted); font-size: 13px; }
+    #plancraft-preview { max-width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
+
+    #toast { position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--success); color: #000; padding: 9px 20px; border-radius: 20px; font-weight: 600; font-size: 13px; opacity: 0; transition: all .3s; z-index: 999; white-space: nowrap; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+    .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); margin: 14px 0 8px; font-weight: 600; }
+
+    /* DASHBOARD */
+    .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .dash-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+    .dash-stat .val { font-size: 20px; font-weight: 700; color: var(--accent); }
+    .dash-stat .lbl { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    #ring-canvas { display: block; margin: 0 auto; }
+    #bar-canvas { display: block; width: 100%; }
+    #map { height: 320px; border-radius: 10px; overflow: hidden; }
+
+    .api-key-row { display: flex; gap: 8px; align-items: flex-end; }
+    .api-key-row input { flex: 1; }
+
+    #eintrag-summary { background: var(--surface2); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; display: none; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <h1>⚒ Stundenzettel</h1>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('eintrag',this)">Eintrag</button>
+    <button class="nav-tab" onclick="showPage('monat',this)">Monat</button>
+    <button class="nav-tab" onclick="showPage('dashboard',this)">Dashboard</button>
+    <button class="nav-tab" onclick="showPage('einstellungen',this)">⚙</button>
+  </div>
+</nav>
+
+<!-- EINTRAG -->
+<div class="page active" id="page-eintrag">
+  <div class="card">
+    <div class="card-title">Plancraft Import</div>
+    <div class="upload-zone" onclick="document.getElementById('plancraft-file').click()">
+      <div class="icon">📷</div>
+      <p>Screenshot hochladen<br><small>Ort, Kunde &amp; Datum werden automatisch erkannt</small></p>
+    </div>
+    <input type="file" id="plancraft-file" accept="image/*" style="display:none" onchange="handlePlancraftUpload(this)">
+    <img id="plancraft-preview" alt="Plancraft Screenshot">
+    <div id="extract-status" style="font-size:13px; color:var(--text-muted); margin-top:8px; display:none"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Eintrag</div>
+    <div class="form-row">
+      <div><label>Datum</label><input type="date" id="f-datum"></div>
+      <div><label>Ort</label><input type="text" id="f-ort" placeholder="z.B. München" list="ort-list"><datalist id="ort-list"></datalist></div>
+    </div>
+    <div class="form-row full">
+      <div><label>Kunde / Projekt</label><input type="text" id="f-kunde" placeholder="z.B. Müller GmbH" list="kunde-list"><datalist id="kunde-list"></datalist></div>
+    </div>
+    <hr class="divider">
+    <div class="section-label">Zeiten</div>
+    <div class="form-row three">
+      <div><label>Arbeitsstunden</label><input type="number" id="f-arbeit" placeholder="0" min="0" step="0.5"></div>
+      <div><label>Fahrstunden</label><input type="number" id="f-fahrt" placeholder="0" min="0" step="0.5"></div>
+      <div><label>Nachtstunden</label><input type="number" id="f-nacht" placeholder="0" min="0" step="0.5"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Kilometer (Privatwagen)</label><input type="number" id="f-km" placeholder="0" min="0"></div>
+      <div style="display:flex;flex-direction:column;justify-content:flex-end;">
+        <div class="toggle-row" style="padding:10px 0 0;">
+          <span style="font-size:13px;color:var(--text-muted);">km eingeben</span>
+          <label class="toggle"><input type="checkbox" id="toggle-km" onchange="document.getElementById('f-km').closest('.form-row').style.opacity=this.checked?'1':'.4'"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+    <div class="form-row full"><div><label>Notizen</label><textarea id="f-notiz" placeholder="Optional…"></textarea></div></div>
+    <div id="eintrag-summary"><div id="eintrag-summary-text"></div></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary btn-full" onclick="saveEntry()">Eintrag speichern</button>
+      <button class="btn btn-outline" onclick="clearForm()">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- MONAT -->
+<div class="page" id="page-monat">
+  <div class="month-nav">
+    <button class="btn btn-outline" onclick="changeMonth(-1)">‹</button>
+    <span id="month-label"></span>
+    <button class="btn btn-outline" onclick="changeMonth(1)">›</button>
+  </div>
+  <div class="stats-grid" id="stats-grid"></div>
+  <div class="card"><div class="card-title">Abrechnung</div><div id="abrechnung"></div></div>
+  <div id="entries-list"></div>
+  <div style="display:flex;gap:8px;margin-top:4px;">
+    <button class="btn btn-success btn-full" onclick="exportPDF()">📄 PDF exportieren</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="page" id="page-dashboard">
+  <div class="section-label" style="margin-top:0">Gesamtübersicht</div>
+  <div class="dash-grid" id="dash-totals"></div>
+
+  <div class="card">
+    <div class="card-title">Minijob-Grenze — aktueller Monat</div>
+    <canvas id="ring-canvas" width="200" height="200"></canvas>
+    <div id="ring-label" style="text-align:center; margin-top:8px; font-size:13px; color:var(--text-muted);"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Verdienst pro Monat</div>
+    <canvas id="bar-canvas" height="180"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Baustellen-Karte</div>
+    <div id="map"></div>
+    <p style="font-size:11px;color:var(--text-muted);margin-top:8px;">Orte werden beim ersten Eintrag geortet. Internet benötigt.</p>
+  </div>
+</div>
+
+<!-- EINSTELLUNGEN -->
+<div class="page" id="page-einstellungen">
+  <div class="card">
+    <div class="card-title">Unterschrift</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Einmal zeichnen — wird auf jedem Eintrag verwendet.</p>
+    <canvas id="sig-canvas"></canvas>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="btn btn-primary" onclick="saveSig()">Speichern</button>
+      <button class="btn btn-outline" onclick="clearSig()">Löschen</button>
+    </div>
+    <div id="sig-saved-row" style="margin-top:12px;display:none;">
+      <div class="section-label">Gespeicherte Unterschrift</div>
+      <img id="sig-saved-img" class="sig-preview" alt="Unterschrift">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Stammdaten</div>
+    <div class="form-row full"><div><label>Dein Name</label><input type="text" id="s-name" placeholder="Max Mustermann"></div></div>
+    <div class="form-row full"><div><label>Firma / Chef</label><input type="text" id="s-firma" placeholder="Muster GmbH"></div></div>
+    <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:4px;">Speichern</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Stundenlöhne</div>
+    <div class="form-row three">
+      <div><label>Arbeit (€/h)</label><input type="number" id="s-lohn-arbeit" step="0.1"></div>
+      <div><label>Fahrt (€/h)</label><input type="number" id="s-lohn-fahrt" step="0.1"></div>
+      <div><label>Nacht (€/h)</label><input type="number" id="s-lohn-nacht" step="0.1"></div>
+    </div>
+    <div class="form-row">
+      <div><label>Sprit (€/km)</label><input type="number" id="s-lohn-km" step="0.01"></div>
+      <div><label>Minijob-Grenze (€)</label><input type="number" id="s-minijob" step="1"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:4px;">Speichern</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">KI-Erkennung (optional)</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Mit einem Claude API-Key werden Ort, Kunde und Datum automatisch aus dem Plancraft-Screenshot gelesen. Kostenlos starten auf <strong>console.anthropic.com</strong>.</p>
+    <div class="api-key-row">
+      <div style="flex:1"><label>API-Key</label><input type="password" id="s-api-key" placeholder="sk-ant-..."></div>
+      <button class="btn btn-primary" onclick="saveSettings()">OK</button>
+    </div>
+  </div>
+
+  <div class="card" style="border-color:var(--danger)">
+    <div class="card-title" style="color:var(--danger)">Daten</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Alles wird lokal im Browser gespeichert — kein Server, keine Cloud.</p>
+    <button class="btn btn-danger" onclick="exportData()">Backup exportieren</button>
+    &nbsp;
+    <button class="btn btn-outline" onclick="document.getElementById('import-file').click()">Backup laden</button>
+    <input type="file" id="import-file" accept=".json" style="display:none" onchange="doImport(this)">
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────────
+function localYM(date) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+}
+function localDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+
+let state = {
+  entries: [],
+  settings: { name:'', firma:'', lohnArbeit:12.5, lohnFahrt:10, lohnNacht:17.5, lohnKm:0.3, minijob:603, apiKey:'' },
+  signature: null,
+  currentMonth: localYM(new Date()),
+  geocache: {}
+};
+
+function save() { try { localStorage.setItem('sz2', JSON.stringify(state)); } catch(e){} }
+function load() { try { const d=localStorage.getItem('sz2'); if(d) state=JSON.parse(d); } catch(e){} }
+
+const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+
+// ── INIT ───────────────────────────────────────────────────────────────────────
+load();
+applySettings();
+initSigPad();
+updateAutocomplete();
+document.getElementById('f-datum').value = localDate(new Date());
+document.getElementById('f-km').closest('.form-row').style.opacity = '.4';
+if (state.signature) { document.getElementById('sig-saved-row').style.display='block'; document.getElementById('sig-saved-img').src=state.signature; }
+['f-arbeit','f-fahrt','f-nacht','f-km'].forEach(id => document.getElementById(id).addEventListener('input', updateSummary));
+
+let mapInstance = null;
+let mapMarkers = {};
+
+function applySettings() {
+  const s = state.settings;
+  document.getElementById('s-name').value = s.name||'';
+  document.getElementById('s-firma').value = s.firma||'';
+  document.getElementById('s-lohn-arbeit').value = s.lohnArbeit;
+  document.getElementById('s-lohn-fahrt').value = s.lohnFahrt;
+  document.getElementById('s-lohn-nacht').value = s.lohnNacht;
+  document.getElementById('s-lohn-km').value = s.lohnKm;
+  document.getElementById('s-minijob').value = s.minijob||603;
+  document.getElementById('s-api-key').value = s.apiKey||'';
+}
+
+// ── NAV ────────────────────────────────────────────────────────────────────────
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (name==='monat') renderMonth();
+  if (name==='dashboard') renderDashboard();
+  if (name==='einstellungen') initSigPad();
+}
+
+// ── FORM ───────────────────────────────────────────────────────────────────────
+function updateSummary() {
+  const a=parseFloat(document.getElementById('f-arbeit').value)||0;
+  const f=parseFloat(document.getElementById('f-fahrt').value)||0;
+  const n=parseFloat(document.getElementById('f-nacht').value)||0;
+  const km=document.getElementById('toggle-km').checked?(parseFloat(document.getElementById('f-km').value)||0):0;
+  const s=state.settings;
+  const total=a*s.lohnArbeit+f*s.lohnFahrt+n*s.lohnNacht+km*s.lohnKm;
+  if(a+f+n+km===0){document.getElementById('eintrag-summary').style.display='none';return;}
+  document.getElementById('eintrag-summary').style.display='block';
+  document.getElementById('eintrag-summary-text').innerHTML=
+    `<strong style="color:var(--accent)">${fmt(total)}</strong> — `+
+    [a?`${a}h Arbeit`:'',f?`${f}h Fahrt`:'',n?`${n}h Nacht`:'',km?`${km} km`:''].filter(Boolean).join(' · ');
+}
+
+async function saveEntry() {
+  const datum=document.getElementById('f-datum').value;
+  const ort=document.getElementById('f-ort').value.trim();
+  const kunde=document.getElementById('f-kunde').value.trim();
+  const arbeit=parseFloat(document.getElementById('f-arbeit').value)||0;
+  const fahrt=parseFloat(document.getElementById('f-fahrt').value)||0;
+  const nacht=parseFloat(document.getElementById('f-nacht').value)||0;
+  const km=document.getElementById('toggle-km').checked?(parseFloat(document.getElementById('f-km').value)||0):0;
+  const notiz=document.getElementById('f-notiz').value.trim();
+  if(!datum){toast('Bitte Datum angeben',true);return;}
+  const entry={id:Date.now(),datum,ort,kunde,arbeit,fahrt,nacht,km,notiz,lat:null,lng:null};
+  if(ort) geocodeOrt(ort, entry);
+  state.entries.push(entry);
+  state.entries.sort((a,b)=>a.datum.localeCompare(b.datum));
+  save(); updateAutocomplete(); clearForm(); toast('Eintrag gespeichert ✓');
+}
+
+function clearForm() {
+  document.getElementById('f-datum').value=localDate(new Date());
+  ['f-ort','f-kunde','f-arbeit','f-fahrt','f-nacht','f-km','f-notiz'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('toggle-km').checked=false;
+  document.getElementById('f-km').closest('.form-row').style.opacity='.4';
+  document.getElementById('eintrag-summary').style.display='none';
+  document.getElementById('plancraft-preview').style.display='none';
+  document.getElementById('extract-status').style.display='none';
+}
+
+function updateAutocomplete() {
+  document.getElementById('ort-list').innerHTML=[...new Set(state.entries.map(e=>e.ort).filter(Boolean))].map(o=>`<option value="${o}">`).join('');
+  document.getElementById('kunde-list').innerHTML=[...new Set(state.entries.map(e=>e.kunde).filter(Boolean))].map(k=>`<option value="${k}">`).join('');
+}
+
+// ── GEOCODING ─────────────────────────────────────────────────────────────────
+async function geocodeOrt(ort, entry) {
+  if(state.geocache[ort]) { entry.lat=state.geocache[ort].lat; entry.lng=state.geocache[ort].lng; save(); return; }
+  try {
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(ort+', Deutschland')}&format=json&limit=1`);
+    const d=await r.json();
+    if(d.length>0){
+      const lat=parseFloat(d[0].lat), lng=parseFloat(d[0].lon);
+      state.geocache[ort]={lat,lng};
+      entry.lat=lat; entry.lng=lng;
+      save();
+    }
+  } catch(e){}
+}
+
+// ── MONAT ──────────────────────────────────────────────────────────────────────
+function changeMonth(d) {
+  const [y,m]=state.currentMonth.split('-').map(Number);
+  const date=new Date(y,m-1+d,1);
+  state.currentMonth=localYM(date);
+  renderMonth();
+}
+
+function monthEntries() { return state.entries.filter(e=>e.datum.startsWith(state.currentMonth)); }
+
+function calcTotals(entries) {
+  const s=state.settings;
+  const totA=entries.reduce((s,e)=>s+e.arbeit,0);
+  const totF=entries.reduce((s,e)=>s+e.fahrt,0);
+  const totN=entries.reduce((s,e)=>s+e.nacht,0);
+  const totK=entries.reduce((s,e)=>s+e.km,0);
+  return { totA,totF,totN,totK, brutto: totA*s.lohnArbeit+totF*s.lohnFahrt+totN*s.lohnNacht+totK*s.lohnKm };
+}
+
+function renderMonth() {
+  const [y,m]=state.currentMonth.split('-').map(Number);
+  document.getElementById('month-label').textContent=`${MONTHS[m-1]} ${y}`;
+  const entries=monthEntries();
+  const s=state.settings;
+  const {totA,totF,totN,totK,brutto}=calcTotals(entries);
+
+  document.getElementById('stats-grid').innerHTML=`
+    <div class="stat-card"><div class="stat-value">${totA}h</div><div class="stat-label">Arbeitsstunden</div></div>
+    <div class="stat-card"><div class="stat-value">${totF}h</div><div class="stat-label">Fahrstunden</div></div>
+    <div class="stat-card"><div class="stat-value">${totN}h</div><div class="stat-label">Nachtstunden</div></div>
+    <div class="stat-card"><div class="stat-value">${fmt(brutto)}</div><div class="stat-label">Gesamt brutto</div></div>`;
+
+  document.getElementById('abrechnung').innerHTML=`
+    <table style="width:100%;font-size:13px;">
+      <tr><td style="padding:4px 0;color:var(--text-muted)">Arbeitsstunden</td><td style="text-align:right">${totA}h × ${fmt(s.lohnArbeit)}</td><td style="text-align:right;padding-left:12px">${fmt(totA*s.lohnArbeit)}</td></tr>
+      <tr><td style="padding:4px 0;color:var(--text-muted)">Fahrstunden</td><td style="text-align:right">${totF}h × ${fmt(s.lohnFahrt)}</td><td style="text-align:right;padding-left:12px">${fmt(totF*s.lohnFahrt)}</td></tr>
+      ${totN>0?`<tr><td style="padding:4px 0;color:var(--text-muted)">Nachtstunden</td><td style="text-align:right">${totN}h × ${fmt(s.lohnNacht)}</td><td style="text-align:right;padding-left:12px">${fmt(totN*s.lohnNacht)}</td></tr>`:''}
+      ${totK>0?`<tr><td style="padding:4px 0;color:var(--text-muted)">Spritgeld</td><td style="text-align:right">${totK} km × ${s.lohnKm}€</td><td style="text-align:right;padding-left:12px">${fmt(totK*s.lohnKm)}</td></tr>`:''}
+      <tr style="border-top:1px solid var(--border)"><td style="padding:8px 0 2px;font-weight:700" colspan="2">Gesamt</td><td style="text-align:right;padding-left:12px;font-weight:700;color:var(--accent);font-size:15px">${fmt(brutto)}</td></tr>
+    </table>`;
+
+  const list=document.getElementById('entries-list');
+  if(!entries.length){list.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:24px 0">Keine Einträge in diesem Monat.</p>';return;}
+  list.innerHTML=entries.map(e=>`
+    <div class="entry-item">
+      <div>
+        <div class="entry-date">${fmtDate(e.datum)}</div>
+        <div class="entry-main">${e.ort||'—'}</div>
+        <div class="entry-sub">${e.kunde||''}</div>
+        <div class="entry-chips">
+          ${e.arbeit>0?`<span class="chip chip-work">${e.arbeit}h Arbeit</span>`:''}
+          ${e.fahrt>0?`<span class="chip chip-travel">${e.fahrt}h Fahrt</span>`:''}
+          ${e.nacht>0?`<span class="chip chip-night">${e.nacht}h Nacht</span>`:''}
+          ${e.km>0?`<span class="chip chip-km">${e.km} km</span>`:''}
+        </div>
+        ${e.notiz?`<div style="font-size:12px;color:var(--text-muted);margin-top:4px">${e.notiz}</div>`:''}
+      </div>
+      <div><button class="icon-btn" onclick="deleteEntry(${e.id})">✕</button></div>
+    </div>`).join('');
+}
+
+function deleteEntry(id) {
+  if(!confirm('Eintrag löschen?'))return;
+  state.entries=state.entries.filter(e=>e.id!==id);
+  save(); renderMonth();
+}
+
+// ── PDF EXPORT — exakt wie die Vorlage ────────────────────────────────────────
+function exportPDF() {
+  const [y,m]=state.currentMonth.split('-').map(Number);
+  const entries=monthEntries();
+  const s=state.settings;
+  const {totA,totF,totN,totK,brutto}=calcTotals(entries);
+
+  const sigCell = state.signature
+    ? `<img src="${state.signature}" style="height:28px;vertical-align:middle;" alt="Unterschrift">`
+    : '&nbsp;';
+
+  // Tabelle hat immer mindestens 20 Zeilen (wie die Vorlage)
+  const minRows = 20;
+  const rows = [...entries];
+  while(rows.length < minRows) rows.push(null);
+
+  const tableRows = rows.map((e,i) => e ? `
+    <tr>
+      <td>${fmtDate(e.datum)}</td>
+      <td>${e.ort||''}</td>
+      <td>${e.kunde||''}</td>
+      <td style="text-align:center">${e.arbeit>0?fmtH(e.arbeit):''}</td>
+      <td style="text-align:center">${e.fahrt>0?fmtH(e.fahrt):''}</td>
+      <td style="text-align:center">${sigCell}</td>
+    </tr>` : `<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>`
+  ).join('');
+
+  // Summenzeile + ggf. Nacht/km als Fußnoten
+  const extras = [];
+  if(totN>0) extras.push(`Nachtstunden: ${totN}h × ${fmt(s.lohnNacht)} = ${fmt(totN*s.lohnNacht)}`);
+  if(totK>0) extras.push(`Spritgeld: ${totK} km × ${s.lohnKm}€ = ${fmt(totK*s.lohnKm)}`);
+
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { margin: 18mm 15mm; }
+  body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #000; }
+  h2 { font-size: 13pt; text-decoration: underline; margin-bottom: 10pt; }
+  .meta { display: flex; gap: 40pt; margin-bottom: 10pt; font-size: 10pt; }
+  .meta span { }
+  .meta strong { margin-left: 4pt; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #555; padding: 4px 6px; font-size: 9.5pt; }
+  th { background: #f0f0f0; font-weight: 700; text-align: left; }
+  td { height: 20px; }
+  .sum-row td { background: #f5a623; font-weight: 700; text-align: center; }
+  .sum-row td:first-child { text-align: right; }
+  .footer-info { margin-top: 10pt; font-size: 9pt; color: #444; }
+  .footer-total { margin-top: 6pt; font-size: 11pt; font-weight: 700; }
+  .sig-block { margin-top: 30pt; display: flex; gap: 50pt; }
+  .sig-line { min-width: 160pt; }
+  .sig-line .line { border-top: 1px solid #000; margin-top: 28pt; padding-top: 3pt; font-size: 8.5pt; color: #555; }
+</style>
+</head>
+<body>
+<h2>Stundenzettel</h2>
+<div class="meta">
+  <span>Monat, Jahr: <strong>${MONTHS[m-1]}, ${y}</strong></span>
+  <span>Vorname, Name: <strong>${s.name||'_______________'}</strong></span>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:70px">Datum:</th>
+      <th style="width:110px">Ort:</th>
+      <th>Kunde:</th>
+      <th style="width:70px;text-align:center">Arbeitszeit:</th>
+      <th style="width:70px;text-align:center">Fahrtzeit:</th>
+      <th style="width:90px;text-align:center">Unterschrift:</th>
+    </tr>
+  </thead>
+  <tbody>${tableRows}</tbody>
+  <tfoot>
+    <tr class="sum-row">
+      <td colspan="3" style="text-align:right;padding-right:8px">Summe:</td>
+      <td>${fmtH(totA)}</td>
+      <td>${fmtH(totF)}</td>
+      <td>${sigCell}</td>
+    </tr>
+  </tfoot>
+</table>
+
+${extras.length>0?`<div class="footer-info">${extras.join('&nbsp;&nbsp;|&nbsp;&nbsp;')}</div>`:''}
+<div class="footer-total">Gesamtverdienst: ${fmt(brutto)}</div>
+
+<div class="sig-block">
+  <div class="sig-line">
+    ${state.signature?`<img src="${state.signature}" style="height:40px;display:block;">`:''}
+    <div class="line">Unterschrift Arbeitnehmer</div>
+  </div>
+  <div class="sig-line"><div class="line">Datum</div></div>
+  <div class="sig-line"><div class="line">Unterschrift Arbeitgeber (${s.firma||'___________'})</div></div>
+</div>
+</body></html>`;
+
+  const win=window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>win.print(),500);
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const s = state.settings;
+  const allBrutto = state.entries.reduce((t,e)=>t+e.arbeit*s.lohnArbeit+e.fahrt*s.lohnFahrt+e.nacht*s.lohnNacht+e.km*s.lohnKm,0);
+  const allArbeit = state.entries.reduce((t,e)=>t+e.arbeit,0);
+  const allFahrt  = state.entries.reduce((t,e)=>t+e.fahrt,0);
+
+  document.getElementById('dash-totals').innerHTML=`
+    <div class="dash-stat"><div class="val">${fmt(allBrutto)}</div><div class="lbl">Gesamtverdienst</div></div>
+    <div class="dash-stat"><div class="val">${state.entries.length}</div><div class="lbl">Einträge gesamt</div></div>
+    <div class="dash-stat"><div class="val">${allArbeit}h</div><div class="lbl">Arbeitsstunden gesamt</div></div>
+    <div class="dash-stat"><div class="val">${allFahrt}h</div><div class="lbl">Fahrstunden gesamt</div></div>`;
+
+  // Ring chart — aktueller Monat
+  const curEntries = state.entries.filter(e=>e.datum.startsWith(state.currentMonth));
+  const curBrutto  = calcTotals(curEntries).brutto;
+  const minijob    = s.minijob||603;
+  drawRing(curBrutto, minijob);
+
+  // Bar chart — letzte 6 Monate
+  drawBar();
+
+  // Map
+  initMap();
+}
+
+function drawRing(earned, limit) {
+  const canvas=document.getElementById('ring-canvas');
+  const ctx=canvas.getContext('2d');
+  const W=200,H=200,cx=100,cy=100,r=75,lw=18;
+  ctx.clearRect(0,0,W,H);
+  const pct=Math.min(earned/limit,1);
+  // background ring
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,2*Math.PI); ctx.strokeStyle='#2e2e2e'; ctx.lineWidth=lw; ctx.stroke();
+  // fill
+  const start=-Math.PI/2;
+  const color = pct>=1?'#22c55e': pct>0.8?'#f59e0b':'#f59e0b';
+  ctx.beginPath(); ctx.arc(cx,cy,r,start,start+2*Math.PI*pct); ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.lineCap='round'; ctx.stroke();
+  // center text
+  ctx.fillStyle='#f5f5f5'; ctx.font='bold 20px -apple-system,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(fmt(earned).replace(' €','€'),cx,cy-10);
+  ctx.fillStyle='#888'; ctx.font='12px -apple-system,sans-serif';
+  ctx.fillText(`von ${fmt(limit).replace(' €','€')}`,cx,cy+14);
+  const remaining=Math.max(limit-earned,0);
+  document.getElementById('ring-label').innerHTML=
+    pct>=1
+    ? `<span style="color:var(--success)">✓ Minijob-Grenze erreicht</span>`
+    : `<span style="color:var(--text-muted)">Noch <strong style="color:var(--accent)">${fmt(remaining)}</strong> bis zur Minijob-Grenze</span>`;
+}
+
+function drawBar() {
+  const canvas=document.getElementById('bar-canvas');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.offsetWidth||640; canvas.width=W;
+  const H=180; canvas.height=H;
+  ctx.clearRect(0,0,W,H);
+  const s=state.settings;
+
+  // gather last 8 months
+  const months=[];
+  const now=new Date();
+  for(let i=7;i>=0;i--){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    const key=d.toISOString().slice(0,7);
+    const entries=state.entries.filter(e=>e.datum.startsWith(key));
+    const brutto=calcTotals(entries).brutto;
+    months.push({key,label:`${d.getMonth()+1}/${String(d.getFullYear()).slice(2)}`,brutto});
+  }
+
+  const maxVal=Math.max(...months.map(m=>m.brutto),100);
+  const padL=10,padR=10,padT=12,padB=28;
+  const bw=(W-padL-padR)/months.length;
+  const barW=bw*0.55;
+
+  months.forEach((m,i)=>{
+    const x=padL+i*bw+bw/2-barW/2;
+    const barH=(m.brutto/maxVal)*(H-padT-padB);
+    const y=H-padB-barH;
+    const isCurrent=m.key===state.currentMonth;
+    ctx.fillStyle=isCurrent?'#f59e0b':'#3a3a3a';
+    ctx.beginPath();
+    ctx.roundRect(x,y,barW,barH,4);
+    ctx.fill();
+    if(m.brutto>0){
+      ctx.fillStyle=isCurrent?'#f5f5f5':'#888';
+      ctx.font=`bold 10px -apple-system,sans-serif`;
+      ctx.textAlign='center';
+      ctx.fillText(Math.round(m.brutto)+'€',x+barW/2,y-4);
+    }
+    ctx.fillStyle='#666'; ctx.font='10px -apple-system,sans-serif'; ctx.textAlign='center';
+    ctx.fillText(m.label,x+barW/2,H-8);
+  });
+}
+
+function initMap() {
+  if(!mapInstance) {
+    mapInstance=L.map('map').setView([51.2,10.4],6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(mapInstance);
+  } else {
+    mapInstance.eachLayer(l=>{ if(l instanceof L.Marker) mapInstance.removeLayer(l); });
+  }
+  const seen={};
+  state.entries.forEach(e=>{
+    if(e.lat&&e.lng&&!seen[e.ort]){
+      seen[e.ort]=true;
+      const count=state.entries.filter(x=>x.ort===e.ort).length;
+      L.circleMarker([e.lat,e.lng],{radius:8,fillColor:'#f59e0b',color:'#000',weight:1,opacity:1,fillOpacity:0.85})
+        .addTo(mapInstance)
+        .bindPopup(`<strong>${e.ort}</strong><br>${count} Einsatz${count!==1?'ätze':''}`);
+    }
+  });
+}
+
+// ── SIGNATURE PAD ─────────────────────────────────────────────────────────────
+let sigDrawing=false, sigCtx, sigInited=false;
+function initSigPad() {
+  const canvas=document.getElementById('sig-canvas');
+  // Größe anhand des sichtbaren Elternelements bestimmen
+  const w = canvas.parentElement.offsetWidth - 28 || 300;
+  const dpr=window.devicePixelRatio||1;
+  canvas.width=w*dpr; canvas.height=140*dpr;
+  canvas.style.width=w+'px'; canvas.style.height='140px';
+  sigCtx=canvas.getContext('2d'); sigCtx.scale(dpr,dpr);
+  sigCtx.strokeStyle='#f59e0b'; sigCtx.lineWidth=2.5; sigCtx.lineCap='round';
+  if(sigInited) return; // Event Listener nur einmal anhängen
+  sigInited=true;
+  const pos=e=>{const r=canvas.getBoundingClientRect(),t=e.touches?e.touches[0]:e;return[t.clientX-r.left,t.clientY-r.top];};
+  canvas.addEventListener('mousedown',e=>{sigDrawing=true;sigCtx.beginPath();const[x,y]=pos(e);sigCtx.moveTo(x,y);});
+  canvas.addEventListener('mousemove',e=>{if(!sigDrawing)return;const[x,y]=pos(e);sigCtx.lineTo(x,y);sigCtx.stroke();});
+  canvas.addEventListener('mouseup',()=>sigDrawing=false);
+  canvas.addEventListener('mouseleave',()=>sigDrawing=false);
+  canvas.addEventListener('touchstart',e=>{e.preventDefault();sigDrawing=true;sigCtx.beginPath();const[x,y]=pos(e);sigCtx.moveTo(x,y);},{passive:false});
+  canvas.addEventListener('touchmove',e=>{e.preventDefault();if(!sigDrawing)return;const[x,y]=pos(e);sigCtx.lineTo(x,y);sigCtx.stroke();},{passive:false});
+  canvas.addEventListener('touchend',()=>sigDrawing=false);
+}
+function saveSig(){state.signature=document.getElementById('sig-canvas').toDataURL();save();document.getElementById('sig-saved-row').style.display='block';document.getElementById('sig-saved-img').src=state.signature;toast('Unterschrift gespeichert ✓');}
+function clearSig(){sigCtx.clearRect(0,0,9999,9999);state.signature=null;save();document.getElementById('sig-saved-row').style.display='none';toast('Unterschrift gelöscht');}
+
+// ── SETTINGS ──────────────────────────────────────────────────────────────────
+function saveSettings(){
+  state.settings={
+    name:document.getElementById('s-name').value.trim(),
+    firma:document.getElementById('s-firma').value.trim(),
+    lohnArbeit:parseFloat(document.getElementById('s-lohn-arbeit').value)||12.5,
+    lohnFahrt:parseFloat(document.getElementById('s-lohn-fahrt').value)||10,
+    lohnNacht:parseFloat(document.getElementById('s-lohn-nacht').value)||17.5,
+    lohnKm:parseFloat(document.getElementById('s-lohn-km').value)||0.3,
+    minijob:parseFloat(document.getElementById('s-minijob').value)||603,
+    apiKey:document.getElementById('s-api-key').value.trim()
+  };
+  save(); toast('Einstellungen gespeichert ✓');
+}
+
+// ── PLANCRAFT IMPORT ──────────────────────────────────────────────────────────
+function handlePlancraftUpload(input){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const src=e.target.result;
+    document.getElementById('plancraft-preview').src=src;
+    document.getElementById('plancraft-preview').style.display='block';
+    if(state.settings.apiKey) await extractWithAI(src);
+    else {
+      document.getElementById('extract-status').style.display='block';
+      document.getElementById('extract-status').textContent='Screenshot als Referenz geladen. Trag die Daten manuell ein – oder hinterlege einen API-Key unter ⚙ für automatische Erkennung.';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+async function extractWithAI(dataUrl){
+  const status=document.getElementById('extract-status');
+  status.style.display='block'; status.textContent='🔍 Erkenne Daten…';
+  try{
+    const base64=dataUrl.split(',')[1], mime=dataUrl.split(';')[0].split(':')[1];
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'x-api-key':state.settings.apiKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-calls':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:mime,data:base64}},
+        {type:'text',text:'Extrahiere aus diesem Plancraft-Screenshot: Ort/Adresse, Kundenname/Projektname, Datum. Antworte NUR mit JSON: {"ort":"...","kunde":"...","datum":"YYYY-MM-DD"}. Unbekannte Felder als leere Zeichenkette.'}
+      ]}]})
+    });
+    const data=await res.json();
+    const text=data.content?.[0]?.text||'';
+    const match=text.match(/\{[^}]+\}/);
+    if(match){
+      const obj=JSON.parse(match[0]);
+      if(obj.ort) document.getElementById('f-ort').value=obj.ort;
+      if(obj.kunde) document.getElementById('f-kunde').value=obj.kunde;
+      if(obj.datum) document.getElementById('f-datum').value=obj.datum;
+      status.textContent='✓ Daten erkannt – bitte prüfen.'; status.style.color='var(--success)';
+    } else { status.textContent='Keine Daten erkannt – bitte manuell eingeben.'; }
+  }catch(e){ status.textContent='Fehler: '+e.message; }
+}
+
+// ── BACKUP ────────────────────────────────────────────────────────────────────
+function exportData(){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`stundenzettel-${new Date().toISOString().slice(0,10)}.json`;a.click();}
+function doImport(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{state=JSON.parse(e.target.result);save();location.reload();}catch{toast('Ungültige Datei',true);}};r.readAsText(f);}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+function fmt(n){return n.toFixed(2).replace('.',',')+' €';}
+function fmtDate(iso){const[y,m,d]=iso.split('-');return`${d}.${m}.${y}`;}
+function fmtH(h){if(!h||h===0)return'';const hrs=Math.floor(h),mins=Math.round((h-hrs)*60);return mins>0?`${hrs} h ${mins} min`:`${hrs} h`;}
+function toast(msg,isError=false){const el=document.getElementById('toast');el.textContent=msg;el.style.background=isError?'var(--danger)':'var(--success)';el.style.color=isError?'#fff':'#000';el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2500);}
+</script>
+</body>
+</html>

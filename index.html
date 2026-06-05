@@ -535,9 +535,14 @@ function updateAutocomplete() {
 
 // ── GEOCODING ─────────────────────────────────────────────────────────────────
 async function geocodeOrt(ort, entry) {
-  if(state.geocache[ort]) { entry.lat=state.geocache[ort].lat; entry.lng=state.geocache[ort].lng; save(); return; }
+  if(state.geocache[ort]) {
+    entry.lat=state.geocache[ort].lat;
+    entry.lng=state.geocache[ort].lng;
+    save();
+    addMapPin(ort, entry.lat, entry.lng);
+    return;
+  }
   try {
-    // Ersten Ort aus kommaseparierten Mehrfachorten nehmen (z.B. "Köln, Düsseldorf" → "Köln")
     const search = ort.split(',')[0].trim();
     const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(search+', Deutschland')}&format=json&limit=1`);
     const d=await r.json();
@@ -546,6 +551,7 @@ async function geocodeOrt(ort, entry) {
       state.geocache[ort]={lat,lng};
       entry.lat=lat; entry.lng=lng;
       save();
+      addMapPin(ort, lat, lng);
     }
   } catch(e){}
 }

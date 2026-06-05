@@ -365,6 +365,40 @@
     <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:4px;">Speichern</button>
   </div>
 
+  <div class="card">
+    <div class="card-title">Alte Stundenzettel importieren</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+      Hast du alte Stundenzettel als Foto oder PDF? So geht's:
+    </p>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;margin-bottom:14px;">
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <span style="background:var(--accent);color:#000;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">1</span>
+        <span>Prompt unten kopieren</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <span style="background:var(--accent);color:#000;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">2</span>
+        <span>Bei <strong>claude.ai</strong> oder <strong>ChatGPT</strong> einfügen + Foto des Stundenzettels anhängen</span>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <span style="background:var(--accent);color:#000;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">3</span>
+        <span>Die KI gibt eine JSON-Datei aus → speichern → hier über "Backup laden" importieren</span>
+      </div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;white-space:pre-wrap;user-select:all;" id="ai-prompt">Ich habe einen Stundenzettel als Bild. Bitte lies alle Zeilen aus der Tabelle und erstelle daraus eine JSON-Datei in exakt diesem Format:
+
+{"entries":[{"id":1,"datum":"YYYY-MM-DD","ort":"Stadt","kunde":"Kundenname","arbeit":8.5,"fahrt":1.5,"nacht":0,"km":0,"notiz":"","lat":null,"lng":null}],"zahlungen":[],"settings":{},"signature":null,"currentMonth":"YYYY-MM","geocache":{}}
+
+Regeln:
+- datum: Format YYYY-MM-DD (z.B. 26.07.24 → 2024-07-26, 09.01.25 → 2025-01-09)
+- arbeit/fahrt/nacht: Stunden als Dezimalzahl (9 h 30 min → 9.5, 1 h 30 min → 1.5)
+- Nachtstunden separat in das "nacht" Feld
+- km: Kilometer als Zahl (0 wenn nicht angegeben)
+- id: fortlaufende Nummer ab 1
+- Leere Zeilen überspringen
+- Gib NUR die JSON-Datei aus, keinen weiteren Text</div>
+    <button class="btn btn-primary btn-full" onclick="copyPrompt()">Prompt kopieren</button>
+  </div>
+
   <div class="card" style="border-color:var(--danger)">
     <div class="card-title" style="color:var(--danger)">Daten</div>
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Alles wird lokal im Browser gespeichert — kein Server, keine Cloud.</p>
@@ -1194,6 +1228,18 @@ function renderAusstehend() {
 }
 
 // ── BACKUP ────────────────────────────────────────────────────────────────────
+function copyPrompt() {
+  const text = document.getElementById('ai-prompt').textContent;
+  navigator.clipboard.writeText(text).then(() => toast('Prompt kopiert ✓')).catch(() => {
+    const el = document.getElementById('ai-prompt');
+    const range = document.createRange();
+    range.selectNode(el);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    toast('Text markiert — bitte manuell kopieren');
+  });
+}
+
 function exportData(){const b=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`stundenzettel-${new Date().toISOString().slice(0,10)}.json`;a.click();}
 function doImport(input) {
   const f = input.files[0];

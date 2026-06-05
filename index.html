@@ -129,6 +129,18 @@
     <div id="extract-status" style="font-size:13px; color:var(--text-muted); margin-top:8px; display:none"></div>
   </div>
 
+  <div class="card" style="border-color:#22c55e;">
+    <div class="card-title" style="color:#22c55e;">Zahlung erhalten</div>
+    <div class="form-row">
+      <div><label>Datum</label><input type="date" id="z-datum"></div>
+      <div><label>Betrag (€)</label><input type="number" id="z-betrag" placeholder="0.00" min="0" step="0.01"></div>
+    </div>
+    <div class="form-row full">
+      <div><label>Notiz (optional)</label><input type="text" id="z-notiz" placeholder="z.B. Überweisung Mai"></div>
+    </div>
+    <button class="btn btn-success btn-full" onclick="saveZahlung()">Zahlung speichern</button>
+  </div>
+
   <div class="card">
     <div class="card-title">Eintrag</div>
     <div class="form-row">
@@ -186,7 +198,13 @@
 
 <!-- DASHBOARD -->
 <div class="page" id="page-dashboard">
-  <div class="section-label" style="margin-top:0">Gesamtübersicht</div>
+  <div class="card" id="ausstehend-card" style="border-color:#f59e0b;">
+    <div class="card-title">Ausstehend vom Chef</div>
+    <div id="ausstehend-betrag" style="font-size:32px;font-weight:700;color:var(--accent);margin-bottom:4px;"></div>
+    <div id="ausstehend-sub" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></div>
+    <div id="zahlungen-list"></div>
+  </div>
+  <div class="section-label" style="margin-top:4px">Gesamtübersicht</div>
   <div class="dash-grid" id="dash-totals"></div>
 
   <div class="card">
@@ -253,6 +271,16 @@
     </div>
   </div>
 
+  <div class="card" style="border-color:var(--accent)">
+    <div class="card-title">Ausstehend-Tracker</div>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Trag hier ein, wie viel dein Chef dir aktuell noch schuldet und ab welchem Datum neue Einträge dazugezählt werden sollen.</p>
+    <div class="form-row">
+      <div><label>Startguthaben (€)</label><input type="number" id="s-ausstehend-start" placeholder="1426.83" step="0.01"></div>
+      <div><label>Stichtag</label><input type="date" id="s-ausstehend-datum"></div>
+    </div>
+    <button class="btn btn-primary" onclick="saveSettings()" style="margin-top:4px;">Speichern</button>
+  </div>
+
   <div class="card" style="border-color:var(--danger)">
     <div class="card-title" style="color:var(--danger)">Daten</div>
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:10px;">Alles wird lokal im Browser gespeichert — kein Server, keine Cloud.</p>
@@ -276,7 +304,8 @@ function localDate(date) {
 
 let state = {
   entries: [],
-  settings: { name:'', firma:'', lohnArbeit:12.5, lohnFahrt:10, lohnNacht:17.5, lohnKm:0.3, minijob:603, apiKey:'' },
+  zahlungen: [],
+  settings: { name:'', firma:'', lohnArbeit:12.5, lohnFahrt:10, lohnNacht:17.5, lohnKm:0.3, minijob:603, apiKey:'', ausstehendStart:0, ausstehendDatum:'' },
   signature: null,
   currentMonth: localYM(new Date()),
   geocache: {}
@@ -293,6 +322,7 @@ applySettings();
 initSigPad();
 updateAutocomplete();
 document.getElementById('f-datum').value = localDate(new Date());
+document.getElementById('z-datum').value = localDate(new Date());
 document.getElementById('f-km').closest('.form-row').style.opacity = '.4';
 if (state.signature) { document.getElementById('sig-saved-row').style.display='block'; document.getElementById('sig-saved-img').src=state.signature; }
 ['f-arbeit','f-fahrt','f-nacht','f-km'].forEach(id => document.getElementById(id).addEventListener('input', updateSummary));
@@ -310,6 +340,8 @@ function applySettings() {
   document.getElementById('s-lohn-km').value = s.lohnKm;
   document.getElementById('s-minijob').value = s.minijob||603;
   document.getElementById('s-api-key').value = s.apiKey||'';
+  document.getElementById('s-ausstehend-start').value = s.ausstehendStart||0;
+  document.getElementById('s-ausstehend-datum').value = s.ausstehendDatum||localDate(new Date());
 }
 
 // ── NAV ────────────────────────────────────────────────────────────────────────
@@ -562,6 +594,7 @@ ${extras.length>0?`<div class="footer-info">${extras.join('&nbsp;&nbsp;|&nbsp;&n
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 function renderDashboard() {
+  renderAusstehend();
   const s = state.settings;
   const allBrutto = state.entries.reduce((t,e)=>t+e.arbeit*s.lohnArbeit+e.fahrt*s.lohnFahrt+e.nacht*s.lohnNacht+e.km*s.lohnKm,0);
   const allArbeit = state.entries.reduce((t,e)=>t+e.arbeit,0);
@@ -698,19 +731,29 @@ function drawBar() {
 
   barMonths.forEach((m,i)=>{
     const x=padL+i*bw+bw/2-barW/2;
-    const barH=(m.brutto/maxVal)*(H-padT-padB);
+    const barH=Math.max((m.brutto/maxVal)*(H-padT-padB), 0);
     const y=H-padB-barH;
     const isCurrent=m.key===state.currentMonth;
-    ctx.fillStyle=isCurrent?'#f59e0b':'#3a3a3a';
-    ctx.beginPath(); ctx.roundRect(x,y,barW,barH,4); ctx.fill();
+    if(barH > 1) {
+      const rad=Math.min(4, barW/2, barH/2);
+      ctx.fillStyle=isCurrent?'#f59e0b':'#3a3a3a';
+      ctx.beginPath();
+      ctx.moveTo(x+rad, y);
+      ctx.lineTo(x+barW-rad, y);
+      ctx.arcTo(x+barW, y, x+barW, y+rad, rad);
+      ctx.lineTo(x+barW, y+barH);
+      ctx.lineTo(x, y+barH);
+      ctx.arcTo(x, y, x+rad, y, rad);
+      ctx.closePath();
+      ctx.fill();
+    }
     if(m.brutto>0){
       ctx.fillStyle=isCurrent?'#f5f5f5':'#888';
       ctx.font='bold 10px -apple-system,sans-serif'; ctx.textAlign='center';
-      ctx.fillText(Math.round(m.brutto)+'€',x+barW/2,y-4);
+      ctx.fillText(Math.round(m.brutto)+'€',x+barW/2,Math.max(y-4, padT+8));
     }
     ctx.fillStyle='#666'; ctx.font='10px -apple-system,sans-serif'; ctx.textAlign='center';
     ctx.fillText(m.label,x+barW/2,H-8);
-    // Klickbereich speichern
     m._x=x; m._y=y; m._w=barW; m._h=barH;
   });
 
@@ -788,7 +831,9 @@ function saveSettings(){
     lohnNacht:parseFloat(document.getElementById('s-lohn-nacht').value)||17.5,
     lohnKm:parseFloat(document.getElementById('s-lohn-km').value)||0.3,
     minijob:parseFloat(document.getElementById('s-minijob').value)||603,
-    apiKey:document.getElementById('s-api-key').value.trim()
+    apiKey:document.getElementById('s-api-key').value.trim(),
+    ausstehendStart:parseFloat(document.getElementById('s-ausstehend-start').value)||0,
+    ausstehendDatum:document.getElementById('s-ausstehend-datum').value
   };
   save(); toast('Einstellungen gespeichert ✓');
 }
@@ -834,6 +879,76 @@ async function extractWithAI(dataUrl){
       status.textContent='✓ Daten erkannt – bitte prüfen.'; status.style.color='var(--success)';
     } else { status.textContent='Keine Daten erkannt – bitte manuell eingeben.'; }
   }catch(e){ status.textContent='Fehler: '+e.message; }
+}
+
+// ── AUSSTEHEND ────────────────────────────────────────────────────────────────
+function calcEntryBrutto(e) {
+  const s=state.settings;
+  return e.arbeit*s.lohnArbeit + e.fahrt*s.lohnFahrt + e.nacht*s.lohnNacht + e.km*s.lohnKm;
+}
+
+function calcAusstehend() {
+  const s=state.settings;
+  const refDatum=s.ausstehendDatum||'';
+  const neuEinnahmen=refDatum
+    ? state.entries.filter(e=>e.datum>refDatum).reduce((sum,e)=>sum+calcEntryBrutto(e),0)
+    : 0;
+  const totalZahlungen=(state.zahlungen||[]).reduce((sum,z)=>sum+z.betrag,0);
+  return (s.ausstehendStart||0) + neuEinnahmen - totalZahlungen;
+}
+
+function saveZahlung() {
+  const datum=document.getElementById('z-datum').value;
+  const betrag=parseFloat(document.getElementById('z-betrag').value)||0;
+  const notiz=document.getElementById('z-notiz').value.trim();
+  if(!datum){toast('Bitte Datum angeben',true);return;}
+  if(betrag<=0){toast('Bitte Betrag angeben',true);return;}
+  if(!state.zahlungen) state.zahlungen=[];
+  state.zahlungen.push({id:Date.now(),datum,betrag,notiz});
+  state.zahlungen.sort((a,b)=>b.datum.localeCompare(a.datum));
+  save();
+  document.getElementById('z-datum').value=localDate(new Date());
+  document.getElementById('z-betrag').value='';
+  document.getElementById('z-notiz').value='';
+  toast('Zahlung gespeichert ✓');
+}
+
+function deleteZahlung(id) {
+  if(!confirm('Zahlung löschen?'))return;
+  state.zahlungen=state.zahlungen.filter(z=>z.id!==id);
+  save();
+  renderDashboard();
+}
+
+function renderAusstehend() {
+  const ausstehend=calcAusstehend();
+  const s=state.settings;
+  const refDatum=s.ausstehendDatum||'';
+  const neuEinnahmen=refDatum
+    ? state.entries.filter(e=>e.datum>refDatum).reduce((sum,e)=>sum+calcEntryBrutto(e),0)
+    : 0;
+  const totalZahlungen=(state.zahlungen||[]).reduce((sum,z)=>sum+z.betrag,0);
+
+  document.getElementById('ausstehend-betrag').textContent=fmt(ausstehend);
+  document.getElementById('ausstehend-sub').innerHTML=
+    `Startguthaben: <strong>${fmt(s.ausstehendStart||0)}</strong>`+
+    (neuEinnahmen>0?` + neue Einnahmen: <strong>${fmt(neuEinnahmen)}</strong>`:'')+
+    (totalZahlungen>0?` − erhalten: <strong>${fmt(totalZahlungen)}</strong>`:'');
+
+  const zl=document.getElementById('zahlungen-list');
+  if(!state.zahlungen||state.zahlungen.length===0){
+    zl.innerHTML='<p style="font-size:12px;color:var(--text-muted)">Noch keine Zahlungen eingetragen.</p>';
+    return;
+  }
+  zl.innerHTML='<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin-bottom:6px;">Zahlungen</div>'+
+    state.zahlungen.map(z=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-top:1px solid var(--border);">
+      <div>
+        <div style="font-size:14px;font-weight:600;color:#22c55e">−${fmt(z.betrag)}</div>
+        <div style="font-size:12px;color:var(--text-muted)">${fmtDate(z.datum)}${z.notiz?' · '+z.notiz:''}</div>
+      </div>
+      <button class="icon-btn" onclick="deleteZahlung(${z.id})">✕</button>
+    </div>`).join('');
 }
 
 // ── BACKUP ────────────────────────────────────────────────────────────────────

@@ -202,6 +202,16 @@
     <div class="card-title">Ausstehend vom Chef</div>
     <div id="ausstehend-betrag" style="font-size:32px;font-weight:700;color:var(--accent);margin-bottom:4px;"></div>
     <div id="ausstehend-sub" style="font-size:12px;color:var(--text-muted);margin-bottom:12px;"></div>
+    <div id="ausstehend-hint" style="display:none;background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="font-size:24px">💰</div>
+        <div>
+          <div style="font-weight:600;font-size:14px;margin-bottom:3px;">Startguthaben noch nicht eingetragen</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Trag ein wie viel dein Chef dir aktuell noch schuldet — z.B. 1426,83 €</div>
+          <button class="btn btn-primary" style="font-size:13px;padding:7px 14px;" onclick="showPage('einstellungen',document.querySelectorAll('.nav-tab')[3])">Jetzt eintragen ⚙</button>
+        </div>
+      </div>
+    </div>
     <div id="zahlungen-list"></div>
   </div>
   <div id="backup-hint" style="display:none;border-color:var(--accent)" class="card">
@@ -345,6 +355,11 @@ function load() {
 
 const MONTHS = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
+// Alle let-Variablen vor dem Init-Block damit kein TDZ entsteht
+let mapInstance = null;
+let mapMarkers = {};
+let sigDrawing = false, sigCtx, sigInited = false;
+
 // ── INIT ───────────────────────────────────────────────────────────────────────
 load();
 applySettings();
@@ -352,14 +367,30 @@ initSigPad();
 updateAutocomplete();
 document.getElementById('f-datum').value = localDate(new Date());
 document.getElementById('z-datum').value = localDate(new Date());
-renderDashboard();
-window.addEventListener('load', renderDashboard);
 document.getElementById('f-km').closest('.form-row').style.opacity = '.4';
 if (state.signature) { document.getElementById('sig-saved-row').style.display='block'; document.getElementById('sig-saved-img').src=state.signature; }
 ['f-arbeit','f-fahrt','f-nacht','f-km'].forEach(id => document.getElementById(id).addEventListener('input', updateSummary));
 
-let mapInstance = null;
-let mapMarkers = {};
+// Dashboard initial rendern: erst Text/Ring sofort, dann Balken nach Layout
+function initDashboard() {
+  renderAusstehend();
+  document.getElementById('backup-hint').style.display = state.entries.length === 0 ? 'block' : 'none';
+  const s = state.settings;
+  const allBrutto = state.entries.reduce((t,e)=>t+e.arbeit*s.lohnArbeit+e.fahrt*s.lohnFahrt+e.nacht*s.lohnNacht+e.km*s.lohnKm,0);
+  const allArbeit = state.entries.reduce((t,e)=>t+e.arbeit,0);
+  const allFahrt  = state.entries.reduce((t,e)=>t+e.fahrt,0);
+  document.getElementById('dash-totals').innerHTML=`
+    <div class="dash-stat"><div class="val">${fmt(allBrutto)}</div><div class="lbl">Gesamtverdienst</div></div>
+    <div class="dash-stat"><div class="val">${state.entries.length}</div><div class="lbl">Einträge gesamt</div></div>
+    <div class="dash-stat"><div class="val">${allArbeit}h</div><div class="lbl">Arbeitsstunden gesamt</div></div>
+    <div class="dash-stat"><div class="val">${allFahrt}h</div><div class="lbl">Fahrstunden gesamt</div></div>`;
+  const curEntries = state.entries.filter(e=>e.datum.startsWith(state.currentMonth));
+  drawRing(calcTotals(curEntries).brutto, s.minijob||603);
+  // Balken und Karte mit Verzögerung damit Layout fertig ist
+  setTimeout(() => { drawBar(); initMap(); }, 150);
+}
+initDashboard();
+setTimeout(geocodeAll, 2000); // Nach 2s starten damit die Seite erst fertig lädt
 
 function applySettings() {
   const s = state.settings;
@@ -437,7 +468,9 @@ function updateAutocomplete() {
 async function geocodeOrt(ort, entry) {
   if(state.geocache[ort]) { entry.lat=state.geocache[ort].lat; entry.lng=state.geocache[ort].lng; save(); return; }
   try {
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(ort+', Deutschland')}&format=json&limit=1`);
+    // Ersten Ort aus kommaseparierten Mehrfachorten nehmen (z.B. "Köln, Düsseldorf" → "Köln")
+    const search = ort.split(',')[0].trim();
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(search+', Deutschland')}&format=json&limit=1`);
     const d=await r.json();
     if(d.length>0){
       const lat=parseFloat(d[0].lat), lng=parseFloat(d[0].lon);
@@ -445,6 +478,39 @@ async function geocodeOrt(ort, entry) {
       entry.lat=lat; entry.lng=lng;
       save();
     }
+  } catch(e){}
+}
+
+// Alle Einträge ohne Koordinaten beim Start nachortern (1 Anfrage/Sekunde)
+async function geocodeAll() {
+  // Eindeutige Orte die noch nicht geocoded sind
+  const orteGesehen = new Set();
+  const zuGeocoden = state.entries.filter(e => {
+    if(!e.ort || e.lat || orteGesehen.has(e.ort)) return false;
+    orteGesehen.add(e.ort);
+    return true;
+  });
+  if(zuGeocoden.length === 0) return;
+  for(const entry of zuGeocoden) {
+    await geocodeOrt(entry.ort, entry);
+    // Alle Einträge mit demselben Ort auch updaten
+    state.entries.filter(e => e.ort === entry.ort).forEach(e => { e.lat=entry.lat; e.lng=entry.lng; });
+    save();
+    // Pin sofort auf Karte setzen wenn Dashboard aktiv
+    if(entry.lat && document.getElementById('page-dashboard').classList.contains('active')) {
+      addMapPin(entry.ort, entry.lat, entry.lng);
+    }
+    await new Promise(r => setTimeout(r, 1100)); // Nominatim-Limit: max 1 req/s
+  }
+}
+
+function addMapPin(ort, lat, lng) {
+  try {
+    if(!mapInstance || typeof L === 'undefined') return;
+    const count = state.entries.filter(e => e.ort === ort).length;
+    L.circleMarker([lat, lng], {radius:8, fillColor:'#f59e0b', color:'#000', weight:1, opacity:1, fillOpacity:0.85})
+      .addTo(mapInstance)
+      .bindPopup(`<strong>${ort}</strong><br>${count} Einsatz${count!==1?'ätze':''}`);
   } catch(e){}
 }
 
@@ -834,7 +900,6 @@ function initMap() {
 }
 
 // ── SIGNATURE PAD ─────────────────────────────────────────────────────────────
-let sigDrawing=false, sigCtx, sigInited=false;
 function initSigPad() {
   const canvas=document.getElementById('sig-canvas');
   // Größe anhand des sichtbaren Elternelements bestimmen
@@ -966,6 +1031,7 @@ function renderAusstehend() {
     : 0;
   const totalZahlungen=(state.zahlungen||[]).reduce((sum,z)=>sum+z.betrag,0);
 
+  document.getElementById('ausstehend-hint').style.display = (!s.ausstehendStart && !s.ausstehendDatum) ? 'block' : 'none';
   document.getElementById('ausstehend-betrag').textContent=fmt(ausstehend);
   document.getElementById('ausstehend-sub').innerHTML=
     `Startguthaben: <strong>${fmt(s.ausstehendStart||0)}</strong>`+
